@@ -1,0 +1,24 @@
+[SN-KERNEL].............................................................................................................
+[SN-KERNEL] Version 1.0 mesh processing utility.........................................................................
+[SN-KERNEL] Usage:   processmesh.x  Partition Threads...................................................................
+[SN-KERNEL] Example: processmesh.x  1         32     ...................................................................
+[SN-KERNEL].............................................................................................................
+[SN-KERNEL].............................................................................................................
+[SN-KERNEL] Preparing METIS  decomposition
+[SN-KERNEL] Number of Threads              2
+[SN-KERNEL] Importing the mesh
+[SN-KERNEL] Number of Elements        2592
+[SN-KERNEL] Number of Vertices         559
+[SN-KERNEL] Number of Threads            2
+[SN-KERNEL] Re-arranging the connectivity by coloring the domain
+The assembly operation is broken into the following steps of elements
+Threads:       1       2
+Step     1|  1104||  1109||
+Step     2|    64||    64||
+Step     3|    42||    42||
+Step     4|    42||    42||
+Step     5|    21||    21||
+Step     6|    11||    11||
+Step     7|    19||     0||
+[SN-KERNEL] Obtaining the spatial matrices
+[SN-KERNEL] Exporting the processed mesh

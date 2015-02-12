@@ -1,0 +1,32 @@
+A1=6
+TH=1
+BV=30
+ITER=100
+ANG=4
+SCH=0
+
+#[SN-KERNEL] Version 1.0 Linear tetrahedral mesh generation...........
+#[SN-KERNEL] Usage:   makemesh.x   X    Y    Z  BCmodel...............
+#[SN-KERNEL] Example: makemesh.x  10   20   10  0      ...............
+#[SN-KERNEL] X, Y, Z specifies the number of X-Y-Z meshes (E=X*Y*Z*12)
+#[SN-KERNEL] BC 0-6  specifies how many box surfaces have vacuum b.c.s
+makemesh.x $A1 $A1 $A1 0 > makemesh_1.out
+echo makemesh.x $A1 $A1 $A1 0
+
+#[SN-KERNEL] Version 1.0 mesh processing utility.....................
+#[SN-KERNEL] Usage:   processmesh.x  Partition Threads...............
+#[SN-KERNEL] Example: processmesh.x  1         32     ...............
+#[SN-KERNEL] Scheme   Use (1) METIS, (other) GREEDY..................
+#[SN-KERNEL] Threads  Maximum threads to setup for in the mini-app...
+processmesh.x 1 $TH > processmesh_1.out
+echo processmesh.x 1 $TH
+
+# This tests out the fortran version
+SNaCFE.x $SCH $ITER $BV $ANG $TH > SNaCFE_1.out
+echo SNaCFE.x $SCH $ITER $BV $ANG $TH
+
+# This tests out the c version
+cSNaCFE.x $SCH $ITER $BV $ANG $TH > cSNaCFE_1.out
+echo cSNaCFE.x $SCH $ITER $BV $ANG $TH
+
+
