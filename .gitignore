@@ -1,0 +1,17 @@
+# Compiled objects and modules
+*.mod
+*.o
+
+# Compiled executables
+makemesh.x
+processmesh.x
+SNaCFE.x
+cSNaCFE.x
+
+# Optimization reports
+*.optrpt
+
+# vim and emacs backups
+*.swp
+*.swo
+~*
