@@ -21,14 +21,14 @@
 !----------------------------------------------------------------------------------------------------
 !----------------------------------------------------------------------------------------------------
 #include "PROTEUS_Preprocess.h"
-RECURSIVE SUBROUTINE FGMRES_Threaded(Output_Unit,User_Krylov,Solution,RightHandSide,                    &
-                     MyThreadID,MyStart,MyEnd,                                                                 &
-                     NumThreads,GuessIsNonZero,ReasonForConvergence,IterationCount,ParallelComm,ParallelRank,  &
-                     ResidualNorm,VectorNorm,VectorNorm_Local,HessenNorm_Local,                                &
+RECURSIVE SUBROUTINE FGMRES_Threaded(User_Krylov,Solution,RightHandSide, &
+                     GuessIsNonZero,ReasonForConvergence,IterationCount, &
+                     ResidualNorm,VectorNorm,VectorNorm_Local,HessenNorm_Local, &
                      Apply_A,Apply_PC)
 #ifdef WITHOMP
   USE OMP_LIB
 #endif
+USE CommonBlock
 USE Method_Krylov
 IMPLICIT NONE
 #ifdef USEMPI
@@ -36,7 +36,6 @@ IMPLICIT NONE
 #endif
 !#define Local_Debug_FGMRES_Driver
 ! Passed In
-PROTEUS_Int  Output_Unit
 TYPE (Method_Krylov_Type)  User_Krylov      ! The allocated structure
 PROTEUS_Real Solution(User_Krylov%Local_Owned)      ! In: an initial guess/ Out: the updated approximation of the solution
 PROTEUS_Real RightHandSide(User_Krylov%Local_Owned) ! Right hand side of the equation (= b vector)
@@ -44,12 +43,9 @@ PROTEUS_Real RightHandSide(User_Krylov%Local_Owned) ! Right hand side of the equ
 PROTEUS_Int  MyThreadID                 ! The ID of the thread 1:NumThreads
 PROTEUS_Int  MyStart,MyEnd              ! The starting/ending points of the thread
 ! Thread shared variables
-PROTEUS_Int  NumThreads                 ! The number of threads
 PROTEUS_Log  GuessIsNonZero             ! If true the vector stored in Solution is used as the initial guess, otherwise a null vector is used
 PROTEUS_Int  ReasonForConvergence       ! Divergence (<0), MaxIterationCount (=0), Convergence (>0)
 PROTEUS_Int  IterationCount             ! Count the total number of inner iteration (number of time we apply A and orthogonalize)
-PROTEUS_Int  ParallelComm               ! ParallelCommunicator, needed to compute vector norm via all reduce
-PROTEUS_Int  ParallelRank
 PROTEUS_Real ResidualNorm,VectorNorm      ! Norm of the residual that is returned (a shared variable between the threads)
 PROTEUS_Real VectorNorm_Local(NumThreads) ! An array used to store threadwise copies of the vector sum
 PROTEUS_Real HessenNorm_Local(NumThreads,User_Krylov%BackVectors)
@@ -63,6 +59,30 @@ PROTEUS_Real LocalConst,Relative_Stop,Divergence_Stop ! These could be thread sh
 PROTEUS_Real Cosinus,Sinus,aconst,bconst ! These are only needed on the root thread
 PROTEUS_Int  I,J,K,Outer,Inner            ! Thes must be thread specific to avoid unnecessary barriers
 
+!$OMP  PARALLEL &
+!$OMP& default(none) &
+!$OMP& shared(NumVertices, NumAngles, User_Krylov, Solution, RightHandSide, &
+!$OMP&   NumThreads, GuessIsNonZero, &
+!$OMP&   ReasonForConvergence, IterationCount, ParallelComm, ParallelRank, &
+!$OMP&   ResidualNorm, VectorNorm, VectorNorm_Local, HessenNorm_Local) &
+!$OMP& private(Maximum_Outer,LocalConst,Relative_Stop,Divergence_Stop, &
+!$OMP&   Cosinus,Sinus,aconst,bconst,I,J,K,Outer,Inner,MyThreadID,MyStart,MyEnd)
+
+#ifdef WITHOMP
+   MyThreadID = omp_get_thread_num() + 1
+   I = (NumVertices*NumAngles)/NumThreads
+   MyStart = (MyThreadID-1)*I + 1
+   IF (MyThreadID .EQ. NumThreads) THEN
+      MyEnd = NumVertices*NumAngles
+   ELSE
+      MyEnd = MyThreadID*I
+   END IF
+#else
+   MyThreadID = 1
+   MyStart = 1
+   MyEnd = NumVertices*NumAngles
+#endif
+   
 ! Grab the value from the structure
 Maximum_Outer = User_Krylov%Maximum_Iterations/User_Krylov%BackVectors
 IF (Maximum_Outer*User_Krylov%BackVectors .NE. User_Krylov%Maximum_Iterations) Maximum_Outer = Maximum_Outer + 1
@@ -456,5 +476,7 @@ DO Outer = 1, Maximum_Outer
 END DO ! Outer
 
 1000 CONTINUE
+
+!$OMP END PARALLEL
 
 END SUBROUTINE FGMRES_Threaded
