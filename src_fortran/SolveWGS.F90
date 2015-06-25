@@ -24,6 +24,7 @@ PROTEUS_Real ResidualNorm               ! Norm of the residual
 ! Additional Threaded stuff
 PROTEUS_Real VectorNorm
 PROTEUS_Real, ALLOCATABLE :: VectorNorm_Local(:,:)
+PROTEUS_Int, ALLOCATABLE :: MyStart(:), MyEnd(:) ! Buffers for starting and ending coordinates
 
 ! Function declarations
 EXTERNAL SolveWGS_PassThrough_AVE1,SolveWGS_PassThrough_AVE2,SolveWGS_PassThrough_AVE3,&
@@ -54,24 +55,39 @@ DO I = 1,SN_GMRESdata%BackVectors
    END DO
 END DO
 
+ALLOCATE(MyStart(NumThreads))
+ALLOCATE(MyEnd(NumThreads))
+I = (NumVertices*NumAngles)/NumThreads
+DO J=1,NumThreads
+  MyStart(J) = (J-1)*I + 1
+  IF (J .EQ. NumThreads) THEN
+    MyEnd(J) = NumVertices*NumAngles
+  ELSE
+    MyEnd(J) = J*I
+  END IF
+END DO
+
 IF      (iMethod .EQ. 1) THEN
    CALL FGMRES_Threaded(SN_GMRESdata,LHS_C,RHS_C,                                           &
                       GuessIsNonZero,ReasonForConvergence,IterationCount, &
                       ResidualNorm,VectorNorm,VectorNorm_Local,VectorNorm_Local,                               &
+                      MyStart,MyEnd, &
                       SolveWGS_PassThrough_AVE1,SolveWGS_PassThrough_PC)
 ELSE IF (iMethod .EQ. 2) THEN
    CALL FGMRES_Threaded(SN_GMRESdata,LHS_C,RHS_C,                                           &
                       GuessIsNonZero,ReasonForConvergence,IterationCount, &
                       ResidualNorm,VectorNorm,VectorNorm_Local,VectorNorm_Local,                               &
+                      MyStart,MyEnd, &
                       SolveWGS_PassThrough_AVE2,SolveWGS_PassThrough_PC)
 ELSE IF (iMethod .EQ. 3) THEN
    CALL FGMRES_Threaded(SN_GMRESdata,LHS_C,RHS_C,                                           &
                       GuessIsNonZero,ReasonForConvergence,IterationCount, &
                       ResidualNorm,VectorNorm,VectorNorm_Local,VectorNorm_Local,                               &
+                      MyStart,MyEnd, &
                       SolveWGS_PassThrough_AVE3,SolveWGS_PassThrough_PC)
 END IF
 
-DEALLOCATE(VectorNorm_Local)
+DEALLOCATE(VectorNorm_Local, MyStart, MyEnd)
 
 WRITE(Output_Unit,'("[SN-KERNEL]...FGMRES returned with an error of ",1PE13.6," after ",I6," iterations")') &
    ResidualNorm,IterationCount

@@ -24,6 +24,7 @@
 RECURSIVE SUBROUTINE FGMRES_Threaded(User_Krylov,Solution,RightHandSide, &
                      GuessIsNonZero,ReasonForConvergence,IterationCount, &
                      ResidualNorm,VectorNorm,VectorNorm_Local,HessenNorm_Local, &
+                     MyStart,MyEnd,&
                      Apply_A,Apply_PC)
 #ifdef WITHOMP
   USE OMP_LIB
@@ -38,10 +39,9 @@ IMPLICIT NONE
 ! Passed In
 TYPE (Method_Krylov_Type)  User_Krylov      ! The allocated structure
 PROTEUS_Real Solution(User_Krylov%Local_Owned)      ! In: an initial guess/ Out: the updated approximation of the solution
-PROTEUS_Real RightHandSide(User_Krylov%Local_Owned) ! Right hand side of the equation (= b vector)
+PROTEUS_Real, INTENT(IN) ::  RightHandSide(User_Krylov%Local_Owned) ! Right hand side of the equation (= b vector)
 ! Thread specific variables
 PROTEUS_Int  MyThreadID                 ! The ID of the thread 1:NumThreads
-PROTEUS_Int  MyStart,MyEnd              ! The starting/ending points of the thread
 ! Thread shared variables
 PROTEUS_Log  GuessIsNonZero             ! If true the vector stored in Solution is used as the initial guess, otherwise a null vector is used
 PROTEUS_Int  ReasonForConvergence       ! Divergence (<0), MaxIterationCount (=0), Convergence (>0)
@@ -49,6 +49,7 @@ PROTEUS_Int  IterationCount             ! Count the total number of inner iterat
 PROTEUS_Real ResidualNorm,VectorNorm      ! Norm of the residual that is returned (a shared variable between the threads)
 PROTEUS_Real VectorNorm_Local(NumThreads) ! An array used to store threadwise copies of the vector sum
 PROTEUS_Real HessenNorm_Local(NumThreads,User_Krylov%BackVectors)
+PROTEUS_Int,  INTENT(IN) :: MyStart(NumThreads), MyEnd(NumThreads)  ! The starting/ending points of the thread
 ! Subroutines that are called
 EXTERNAL  Apply_A                       ! The subroutine which applies the A matrix
 EXTERNAL  Apply_PC                      ! The subroutine which applies the preconditioner
@@ -59,28 +60,21 @@ PROTEUS_Real LocalConst,Relative_Stop,Divergence_Stop ! These could be thread sh
 PROTEUS_Real Cosinus,Sinus,aconst,bconst ! These are only needed on the root thread
 PROTEUS_Int  I,J,K,Outer,Inner            ! Thes must be thread specific to avoid unnecessary barriers
 
+
 !$OMP  PARALLEL &
 !$OMP& default(none) &
 !$OMP& shared(NumVertices, NumAngles, User_Krylov, Solution, RightHandSide, &
 !$OMP&   NumThreads, GuessIsNonZero, &
 !$OMP&   ReasonForConvergence, IterationCount, ParallelComm, ParallelRank, &
-!$OMP&   ResidualNorm, VectorNorm, VectorNorm_Local, HessenNorm_Local) &
+!$OMP&   ResidualNorm, VectorNorm, VectorNorm_Local, HessenNorm_Local, &
+!$OMP&   MyStart, MyEnd) &
 !$OMP& private(Maximum_Outer,LocalConst,Relative_Stop,Divergence_Stop, &
-!$OMP&   Cosinus,Sinus,aconst,bconst,I,J,K,Outer,Inner,MyThreadID,MyStart,MyEnd)
+!$OMP&   Cosinus,Sinus,aconst,bconst,I,J,K,Outer,Inner,MyThreadID)
 
 #ifdef WITHOMP
    MyThreadID = omp_get_thread_num() + 1
-   I = (NumVertices*NumAngles)/NumThreads
-   MyStart = (MyThreadID-1)*I + 1
-   IF (MyThreadID .EQ. NumThreads) THEN
-      MyEnd = NumVertices*NumAngles
-   ELSE
-      MyEnd = MyThreadID*I
-   END IF
 #else
    MyThreadID = 1
-   MyStart = 1
-   MyEnd = NumVertices*NumAngles
 #endif
    
 ! Grab the value from the structure
@@ -100,16 +94,16 @@ IF (Maximum_Outer*User_Krylov%BackVectors .NE. User_Krylov%Maximum_Iterations) M
 
 
 IF (GuessIsNonZero) THEN ! Apply A to the initial guess
-   DO I = MyStart,MyEnd
+   DO I = MyStart(MyThreadID),MyEnd(MyThreadID)
       User_Krylov%Basis(I,1) = 0.0d0
    END DO
    ! Start: Compute the initial residual r0 = Ax0 - b and the first basis vector v1 = r0/||r0||
    CALL Apply_A(Solution,User_Krylov%Basis) ! (1,1)
-   DO I = MyStart,MyEnd
+   DO I = MyStart(MyThreadID),MyEnd(MyThreadID)
       User_Krylov%Basis(I,1) = RightHandSide(I) - User_Krylov%Basis(I,1)
    END DO
 ELSE ! Zero solution if GuessIsNonZero .EQ. False
-   DO I = MyStart,MyEnd
+   DO I = MyStart(MyThreadID),MyEnd(MyThreadID)
       Solution(I) = 0.0d0
       User_Krylov%Basis(I,1) = RightHandSide(I)
    END DO
@@ -125,7 +119,7 @@ END IF
 #endif
 
 VectorNorm_Local(MyThreadID) = 0.0d0
-DO I = MyStart,MyEnd
+DO I = MyStart(MyThreadID),MyEnd(MyThreadID)
    VectorNorm_Local(MyThreadID) = VectorNorm_Local(MyThreadID) + User_Krylov%Basis(I,1) * User_Krylov%Basis(I,1)
 END DO
 ! Reduction over all threads. Two barriers are needed to ensure data is consistent at both points
@@ -183,7 +177,7 @@ DO Outer = 1, Maximum_Outer
 
    ! For the initialization the Residual is in Basis(*,1) and its norm in ResidualNorm    
    LocalConst = 1.0d0 / ResidualNorm
-   DO I = MyStart,MyEnd
+   DO I = MyStart(MyThreadID),MyEnd(MyThreadID)
       User_Krylov%Basis(I,1)    =  User_Krylov%Basis(I,1) * LocalConst
       User_Krylov%Basis(I,2)    = 0.0d0
       User_Krylov%PC_Basis(I,1) = 0.0d0
@@ -219,7 +213,7 @@ DO Outer = 1, Maximum_Outer
       ! We need to reduce on Hessenberg(:,K) across all threads
       DO I = 1, Inner
          HessenNorm_Local(MyThreadID,I) = 0.0d0
-         DO J = MyStart,MyEnd
+         DO J = MyStart(MyThreadID),MyEnd(MyThreadID)
             HessenNorm_Local(MyThreadID,I) = HessenNorm_Local(MyThreadID,I) + User_Krylov%Basis(J,Inner+1)*User_Krylov%Basis(J,I)
          END DO
       END DO
@@ -256,14 +250,14 @@ DO Outer = 1, Maximum_Outer
 #endif
       ! Compute an new orthogonal vector
       DO J = 1,Inner
-         DO I = MyStart,MyEnd
+         DO I = MyStart(MyThreadID),MyEnd(MyThreadID)
             User_Krylov%Basis(I,Inner+1) = User_Krylov%Basis(I,Inner+1) - User_Krylov%Hessenberg(J,Inner)*User_Krylov%Basis(I,J)
          END DO
       END DO
 
       ! Compute its norm
       VectorNorm_Local(MyThreadID) = 0.0d0
-      DO I = MyStart,MyEnd
+      DO I = MyStart(MyThreadID),MyEnd(MyThreadID)
          VectorNorm_Local(MyThreadID) = VectorNorm_Local(MyThreadID) + User_Krylov%Basis(I,Inner+1)*User_Krylov%Basis(I,Inner+1)
       END DO
       ! Reduction over all threads. Two barriers are needed to ensure data is consistent at both points
@@ -346,11 +340,11 @@ DO Outer = 1, Maximum_Outer
       IF (VectorNorm .EQ. 0.0d0) EXIT ! Inner iteration loop
 
       IF (Inner .EQ. User_Krylov%BackVectors) THEN ! We have nothing left to initialize so...
-         DO I = MyStart,MyEnd
+         DO I = MyStart(MyThreadID),MyEnd(MyThreadID)
             User_Krylov%Basis(I,Inner+1) = User_Krylov%Basis(I,Inner+1) * VectorNorm
          END DO
       ELSE
-         DO I = MyStart,MyEnd
+         DO I = MyStart(MyThreadID),MyEnd(MyThreadID)
             User_Krylov%Basis(I,Inner+1)    = User_Krylov%Basis(I,Inner+1) * VectorNorm
             User_Krylov%Basis(I,Inner+2)    = 0.0d0
             User_Krylov%PC_Basis(I,Inner+1) = 0.0d0
@@ -407,7 +401,7 @@ DO Outer = 1, Maximum_Outer
 
    ! Update the solution Xm = X0 + Zm*Y
    DO J = 1,Inner
-      DO I = MyStart,MyEnd
+      DO I = MyStart(MyThreadID),MyEnd(MyThreadID)
          Solution(I) = Solution(I) + User_Krylov%PC_Basis(I,J)*User_Krylov%Modified_RHS(J)
       END DO
    END DO
@@ -422,7 +416,7 @@ DO Outer = 1, Maximum_Outer
 #endif
 
    ! Initialize the basis so the user does not have to do it
-   DO I = MyStart,MyEnd
+   DO I = MyStart(MyThreadID),MyEnd(MyThreadID)
       User_Krylov%Basis(I,1) = 0.0d0
    END DO
 
@@ -432,7 +426,7 @@ DO Outer = 1, Maximum_Outer
 !$OMP BARRIER
    
    VectorNorm_Local(MyThreadID) = 0.0d0
-   DO I = MyStart,MyEnd
+   DO I = MyStart(MyThreadID),MyEnd(MyThreadID)
       User_Krylov%Basis(I,1) = RightHandSide(I) - User_Krylov%Basis(I,1)
       VectorNorm_Local(MyThreadID) = VectorNorm_Local(MyThreadID) + User_Krylov%Basis(I,1)*User_Krylov%Basis(I,1)
    END DO
