@@ -13,7 +13,7 @@ IMPLICIT NONE
 PROTEUS_Int :: Input_GridX           ! Structured grid cells in X  
 PROTEUS_Int :: Input_GridY           ! Structured grid cells in Y
 PROTEUS_Int :: Input_GridZ           ! Structured grid cells in Z
-PROTEUS_Int :: Input_BCmodel         ! The boundary condition model to assume (0-3, 0=no b.c.s  1= X surface bc   2= X&Y surface bc  3=X&Y&Z surface bc)
+PROTEUS_Int :: Input_BCmodel = 0     ! The boundary condition model to assume (0-3, 0=no b.c.s  1= X surface bc   2= X&Y surface bc  3=X&Y&Z surface bc)
 ! Local
 CHARACTER*32 :: Some_String
 PROTEUS_Int ReturnedError,NumArguments,I
